@@ -1,0 +1,2 @@
+-keep class com.jsux.uwufy.** { *; }
+-keep class de.robv.android.xposed.** { *; }
