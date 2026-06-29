@@ -4,7 +4,7 @@ import android.content.Context;
 import android.text.TextUtils;
 import android.text.method.PasswordTransformationMethod;
 import android.os.SystemClock;
-import android.view.inputmethod.InputType;
+import android.text.InputType;
 import android.widget.EditText;
 import android.widget.TextView;
 
