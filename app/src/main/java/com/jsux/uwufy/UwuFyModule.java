@@ -19,7 +19,7 @@ import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 
 public final class UwuFyModule implements IXposedHookLoadPackage {
-    private static final String SELF_PACKAGE = BuildConfig.APPLICATION_ID;
+    private static final String SELF_PACKAGE = "com.jsux.uwufy";
     private static final Object LOCK = new Object();
     private static final WeakHashMap<TextView, PendingState> STATES = new WeakHashMap<>();
     private static final long CONFIG_CACHE_MS = 750L;
