@@ -1,12 +1,14 @@
 package com.jsux.uwufy;
 
-import android.text.InputType;
+import android.content.Context;
 import android.text.TextUtils;
 import android.text.method.PasswordTransformationMethod;
+import android.os.SystemClock;
+import android.view.inputmethod.InputType;
 import android.widget.EditText;
 import android.widget.TextView;
 
-import java.util.Collections;
+import java.lang.ref.WeakReference;
 import java.util.WeakHashMap;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
@@ -14,12 +16,17 @@ import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XSharedPreferences;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 import de.robv.android.xposed.XposedBridge;
+import de.robv.android.xposed.XposedHelpers;
 
 public final class UwuFyModule implements IXposedHookLoadPackage {
     private static final String SELF_PACKAGE = BuildConfig.APPLICATION_ID;
     private static final Object LOCK = new Object();
     private static final WeakHashMap<TextView, PendingState> STATES = new WeakHashMap<>();
-    private static boolean hooksInstalled;
+    private static final long CONFIG_CACHE_MS = 750L;
+
+    private static volatile boolean hooksInstalled;
+    private static volatile long lastConfigLoadAt;
+    private static volatile UwuConfig cachedConfig = UwuConfig.defaults();
     private static XSharedPreferences prefs;
 
     @Override
@@ -32,11 +39,6 @@ public final class UwuFyModule implements IXposedHookLoadPackage {
             return;
         }
 
-        final UwuConfig config = loadConfig();
-        if (config == null || !config.enabled || !packageAllowed(lpparam.packageName, config.allowedPackages)) {
-            return;
-        }
-
         synchronized (LOCK) {
             if (hooksInstalled) {
                 return;
@@ -45,7 +47,7 @@ public final class UwuFyModule implements IXposedHookLoadPackage {
         }
 
         try {
-            de.robv.android.xposed.XposedHelpers.findAndHookMethod(
+            XposedHelpers.findAndHookMethod(
                     TextView.class,
                     "onTextChanged",
                     CharSequence.class,
@@ -61,7 +63,8 @@ public final class UwuFyModule implements IXposedHookLoadPackage {
 
                             TextView view = (TextView) param.thisObject;
                             UwuConfig cfg = loadConfig();
-                            if (!shouldProcess(view, cfg, lpparam.packageName)) {
+                            String packageName = currentPackageName(view);
+                            if (!shouldProcess(view, cfg, packageName)) {
                                 return;
                             }
 
@@ -76,6 +79,7 @@ public final class UwuFyModule implements IXposedHookLoadPackage {
                             if (state.applying) {
                                 state.applying = false;
                                 state.lastApplied = current;
+                                state.pendingSource = current;
                                 return;
                             }
 
@@ -86,20 +90,35 @@ public final class UwuFyModule implements IXposedHookLoadPackage {
                             state.pendingSource = current;
                             state.generation++;
                             final int generation = state.generation;
-                            final WeakStateRunnable task = new WeakStateRunnable(view, lpparam.packageName, generation);
+                            final String capturedPackage = packageName;
+                            final WeakStateRunnable task = new WeakStateRunnable(view, capturedPackage, generation);
 
                             if (state.task != null) {
                                 view.removeCallbacks(state.task);
                             }
 
                             state.task = task;
-                            view.postDelayed(task, Math.max(200L, cfg.delayMs));
+                            view.postDelayed(task, Math.max(0L, cfg.delayMs));
                         }
                     }
             );
         } catch (Throwable t) {
             XposedBridge.log(t);
         }
+    }
+
+    private static String currentPackageName(TextView view) {
+        try {
+            Context context = view.getContext();
+            if (context != null) {
+                String pkg = context.getPackageName();
+                if (!TextUtils.isEmpty(pkg)) {
+                    return pkg;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return "";
     }
 
     private static PendingState getState(TextView view) {
@@ -116,19 +135,37 @@ public final class UwuFyModule implements IXposedHookLoadPackage {
     private static boolean shouldSkipPackage(String packageName) {
         return SELF_PACKAGE.equals(packageName)
                 || "org.lsposed.manager".equals(packageName)
-                || "com.topjohnwu.magisk".equals(packageName);
+                || "com.topjohnwu.magisk".equals(packageName)
+                || "com.android.systemui".equals(packageName);
     }
 
     private static UwuConfig loadConfig() {
-        XSharedPreferences current = getPrefs();
-        if (current == null) {
-            return UwuConfig.defaults();
+        long now = SystemClock.uptimeMillis();
+        UwuConfig current = cachedConfig;
+        if (current != null && now - lastConfigLoadAt < CONFIG_CACHE_MS) {
+            return current;
         }
-        try {
-            current.reload();
-            return UwuConfig.from(current);
-        } catch (Throwable ignored) {
-            return UwuConfig.defaults();
+
+        synchronized (LOCK) {
+            now = SystemClock.uptimeMillis();
+            current = cachedConfig;
+            if (current != null && now - lastConfigLoadAt < CONFIG_CACHE_MS) {
+                return current;
+            }
+
+            XSharedPreferences currentPrefs = getPrefs();
+            UwuConfig cfg = UwuConfig.defaults();
+            if (currentPrefs != null) {
+                try {
+                    currentPrefs.reload();
+                    cfg = UwuConfig.from(currentPrefs);
+                } catch (Throwable ignored) {
+                    cfg = UwuConfig.defaults();
+                }
+            }
+            cachedConfig = cfg;
+            lastConfigLoadAt = now;
+            return cfg;
         }
     }
 
@@ -163,23 +200,14 @@ public final class UwuFyModule implements IXposedHookLoadPackage {
 
     private static boolean isPasswordInput(TextView view) {
         try {
-            int type = view.getInputType();
-            int variation = type & InputType.TYPE_MASK_VARIATION;
-            if (variation == InputType.TYPE_TEXT_VARIATION_PASSWORD) {
-                return true;
-            }
-            if (variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD) {
-                return true;
-            }
-            if (variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD) {
-                return true;
-            }
-            if (variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD) {
-                return true;
-            }
+            int variation = view.getInputType() & InputType.TYPE_MASK_VARIATION;
+            return variation == InputType.TYPE_TEXT_VARIATION_PASSWORD
+                    || variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                    || variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD
+                    || variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD;
         } catch (Throwable ignored) {
+            return false;
         }
-        return false;
     }
 
     private static boolean packageAllowed(String packageName, String allowedPackages) {
@@ -235,12 +263,12 @@ public final class UwuFyModule implements IXposedHookLoadPackage {
     }
 
     private static final class WeakStateRunnable implements Runnable {
-        private final java.lang.ref.WeakReference<TextView> viewRef;
+        private final WeakReference<TextView> viewRef;
         private final String packageName;
         private final int generation;
 
         WeakStateRunnable(TextView view, String packageName, int generation) {
-            this.viewRef = new java.lang.ref.WeakReference<>(view);
+            this.viewRef = new WeakReference<>(view);
             this.packageName = packageName;
             this.generation = generation;
         }

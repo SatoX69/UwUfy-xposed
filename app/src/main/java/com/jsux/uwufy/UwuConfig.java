@@ -64,6 +64,26 @@ public final class UwuConfig {
         );
     }
 
+
+    public static UwuConfig from(de.robv.android.xposed.XSharedPreferences prefs) {
+        if (prefs == null) {
+            return defaults();
+        }
+        return new UwuConfig(
+                prefs.getBoolean(Prefs.KEY_ENABLED, Prefs.DEF_ENABLED),
+                prefs.getInt(Prefs.KEY_DELAY_MS, Prefs.DEF_DELAY_MS),
+                prefs.getInt(Prefs.KEY_MIN_LENGTH, Prefs.DEF_MIN_LENGTH),
+                prefs.getString(Prefs.KEY_ALLOWED_PACKAGES, Prefs.DEF_ALLOWED_PACKAGES),
+                prefs.getInt(Prefs.KEY_STUTTER_PCT, Prefs.DEF_STUTTER_PCT),
+                prefs.getInt(Prefs.KEY_FACE_PCT, Prefs.DEF_FACE_PCT),
+                prefs.getInt(Prefs.KEY_ACTION_PCT, Prefs.DEF_ACTION_PCT),
+                prefs.getInt(Prefs.KEY_EXCLAIM_PCT, Prefs.DEF_EXCLAIM_PCT),
+                prefs.getBoolean(Prefs.KEY_PRESERVE_URLS, Prefs.DEF_PRESERVE_URLS),
+                prefs.getBoolean(Prefs.KEY_PRESERVE_EMAILS, Prefs.DEF_PRESERVE_EMAILS),
+                prefs.getBoolean(Prefs.KEY_PRESERVE_PASSWORDS, Prefs.DEF_PRESERVE_PASSWORDS),
+                prefs.getBoolean(Prefs.KEY_PRESERVE_ACRONYMS, Prefs.DEF_PRESERVE_ACRONYMS)
+        );
+    }
     public static UwuConfig defaults() {
         return new UwuConfig(
                 Prefs.DEF_ENABLED,
