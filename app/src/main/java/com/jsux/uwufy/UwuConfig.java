@@ -5,8 +5,8 @@ import android.content.SharedPreferences;
 public final class UwuConfig {
     public final boolean enabled;
     public final int delayMs;
-    public final String allowedPackages;
     public final int minLength;
+    public final String allowedPackages;
     public final int stutterPct;
     public final int facePct;
     public final int actionPct;
@@ -16,11 +16,24 @@ public final class UwuConfig {
     public final boolean preservePasswords;
     public final boolean preserveAcronyms;
 
-    public UwuConfig(boolean enabled, int delayMs, String allowedPackages, int minLength, int stutterPct, int facePct, int actionPct, int exclaimPct, boolean preserveUrls, boolean preserveEmails, boolean preservePasswords, boolean preserveAcronyms) {
+    public UwuConfig(
+            boolean enabled,
+            int delayMs,
+            int minLength,
+            String allowedPackages,
+            int stutterPct,
+            int facePct,
+            int actionPct,
+            int exclaimPct,
+            boolean preserveUrls,
+            boolean preserveEmails,
+            boolean preservePasswords,
+            boolean preserveAcronyms
+    ) {
         this.enabled = enabled;
-        this.delayMs = delayMs;
-        this.allowedPackages = allowedPackages == null ? "" : allowedPackages;
-        this.minLength = minLength;
+        this.delayMs = Math.max(0, delayMs);
+        this.minLength = Math.max(1, minLength);
+        this.allowedPackages = allowedPackages == null ? "" : allowedPackages.trim();
         this.stutterPct = clampPct(stutterPct);
         this.facePct = clampPct(facePct);
         this.actionPct = clampPct(actionPct);
@@ -38,8 +51,8 @@ public final class UwuConfig {
         return new UwuConfig(
                 prefs.getBoolean(Prefs.KEY_ENABLED, Prefs.DEF_ENABLED),
                 prefs.getInt(Prefs.KEY_DELAY_MS, Prefs.DEF_DELAY_MS),
-                prefs.getString(Prefs.KEY_ALLOWED_PACKAGES, Prefs.DEF_ALLOWED_PACKAGES),
                 prefs.getInt(Prefs.KEY_MIN_LENGTH, Prefs.DEF_MIN_LENGTH),
+                prefs.getString(Prefs.KEY_ALLOWED_PACKAGES, Prefs.DEF_ALLOWED_PACKAGES),
                 prefs.getInt(Prefs.KEY_STUTTER_PCT, Prefs.DEF_STUTTER_PCT),
                 prefs.getInt(Prefs.KEY_FACE_PCT, Prefs.DEF_FACE_PCT),
                 prefs.getInt(Prefs.KEY_ACTION_PCT, Prefs.DEF_ACTION_PCT),
@@ -55,8 +68,8 @@ public final class UwuConfig {
         return new UwuConfig(
                 Prefs.DEF_ENABLED,
                 Prefs.DEF_DELAY_MS,
-                Prefs.DEF_ALLOWED_PACKAGES,
                 Prefs.DEF_MIN_LENGTH,
+                Prefs.DEF_ALLOWED_PACKAGES,
                 Prefs.DEF_STUTTER_PCT,
                 Prefs.DEF_FACE_PCT,
                 Prefs.DEF_ACTION_PCT,
@@ -69,8 +82,12 @@ public final class UwuConfig {
     }
 
     private static int clampPct(int value) {
-        if (value < 0) return 0;
-        if (value > 100) return 100;
+        if (value < 0) {
+            return 0;
+        }
+        if (value > 100) {
+            return 100;
+        }
         return value;
     }
 }

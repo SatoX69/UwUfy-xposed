@@ -19,15 +19,15 @@ import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.Switch;
 import android.widget.TextView;
+import android.widget.Toast;
 
 public final class MainActivity extends Activity {
     private SharedPreferences prefs;
+
     private Switch enabledSwitch;
     private EditText delayEdit;
-    private EditText allowedPackagesEdit;
     private EditText minLengthEdit;
-    private EditText previewInput;
-    private TextView previewOutput;
+    private EditText allowedPackagesEdit;
     private CheckBox preserveUrls;
     private CheckBox preserveEmails;
     private CheckBox preservePasswords;
@@ -36,11 +36,13 @@ public final class MainActivity extends Activity {
     private LabelSeekBar faceBar;
     private LabelSeekBar actionBar;
     private LabelSeekBar exclaimBar;
+    private EditText previewInput;
+    private TextView previewOutput;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        prefs = openPrefs();
+        prefs = getSharedPreferences(Prefs.NAME, Context.MODE_PRIVATE);
 
         ScrollView scrollView = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
@@ -49,34 +51,40 @@ public final class MainActivity extends Activity {
         scrollView.addView(root, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         TextView title = new TextView(this);
-        title.setText("UwuFy");
+        title.setText(R.string.app_name);
         title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 28f);
-        title.setPadding(0, 0, 0, dp(8));
+        title.setPadding(0, 0, 0, dp(6));
         root.addView(title);
 
         TextView subtitle = new TextView(this);
-        subtitle.setText("LSPosed module that waits for text to go idle, then uwu-fies it across editable fields. Scope the module to the apps you type in. The keyboard itself is not the target, because text commits happen in the app process. Tragic, I know.");
+        subtitle.setText("LSPosed module for app processes. Scope it to the apps you type in, not just the keyboard, because the app is where text actually lands. Delightfully inconvenient, but that is how Android works.");
         subtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f);
         subtitle.setPadding(0, 0, 0, dp(16));
         root.addView(subtitle);
+
+        TextView note = new TextView(this);
+        note.setText("Idle delay means the text is only uwu-fied after it has stopped changing for a bit. That avoids the usual chaos of live typing.");
+        note.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
+        note.setPadding(0, 0, 0, dp(16));
+        root.addView(note);
 
         enabledSwitch = new Switch(this);
         enabledSwitch.setText("Enabled");
         root.addView(enabledSwitch);
 
-        delayEdit = createNumberField("Idle delay in ms", Prefs.DEF_DELAY_MS);
+        delayEdit = createNumberField("Idle delay in ms");
+        minLengthEdit = createNumberField("Minimum length");
+        allowedPackagesEdit = createTextField("Allowed package list, comma or space separated");
+
         root.addView(wrapWithLabel("Idle delay before uwuifying", delayEdit));
-
-        minLengthEdit = createNumberField("Min length", Prefs.DEF_MIN_LENGTH);
         root.addView(wrapWithLabel("Minimum text length", minLengthEdit));
-
-        allowedPackagesEdit = createTextField("Allowed app packages, comma-separated, blank = all");
-        root.addView(wrapWithLabel("Only apply in these apps", allowedPackagesEdit));
+        root.addView(wrapWithLabel("Allowed apps", allowedPackagesEdit));
 
         stutterBar = createSeekBar("Stutter chance", Prefs.DEF_STUTTER_PCT);
-        faceBar = createSeekBar("Emoticon chance", Prefs.DEF_FACE_PCT);
+        faceBar = createSeekBar("Face chance", Prefs.DEF_FACE_PCT);
         actionBar = createSeekBar("Action chance", Prefs.DEF_ACTION_PCT);
         exclaimBar = createSeekBar("Exclamation chance", Prefs.DEF_EXCLAIM_PCT);
+
         root.addView(stutterBar);
         root.addView(faceBar);
         root.addView(actionBar);
@@ -85,7 +93,8 @@ public final class MainActivity extends Activity {
         preserveUrls = createCheckBox("Preserve URLs");
         preserveEmails = createCheckBox("Preserve emails");
         preservePasswords = createCheckBox("Preserve password fields");
-        preserveAcronyms = createCheckBox("Preserve acronyms");
+        preserveAcronyms = createCheckBox("Preserve acronyms / ALL CAPS");
+
         root.addView(preserveUrls);
         root.addView(preserveEmails);
         root.addView(preservePasswords);
@@ -93,17 +102,18 @@ public final class MainActivity extends Activity {
 
         LinearLayout buttons = new LinearLayout(this);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
-        buttons.setPadding(0, dp(12), 0, dp(12));
+        buttons.setPadding(0, dp(14), 0, dp(14));
 
         Button saveButton = new Button(this);
         saveButton.setText("Save");
+
         Button resetButton = new Button(this);
         resetButton.setText("Reset");
 
-        LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        buttons.addView(saveButton, buttonParams);
-        buttons.addView(space(dp(10)));
-        buttons.addView(resetButton, buttonParams);
+        LinearLayout.LayoutParams weight = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        buttons.addView(saveButton, weight);
+        buttons.addView(space(dp(10)), new LinearLayout.LayoutParams(dp(10), 1));
+        buttons.addView(resetButton, weight);
         root.addView(buttons);
 
         TextView previewLabel = new TextView(this);
@@ -113,6 +123,8 @@ public final class MainActivity extends Activity {
         root.addView(previewLabel);
 
         previewInput = createTextField("Preview input");
+        previewInput.setSingleLine(false);
+        previewInput.setMinLines(3);
         previewInput.setText("Hello friend, this is really good. Please do not turn my passwords into cute nonsense.");
         root.addView(previewInput);
 
@@ -120,29 +132,27 @@ public final class MainActivity extends Activity {
         previewOutput.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f);
         previewOutput.setPadding(dp(12), dp(12), dp(12), dp(12));
         previewOutput.setBackgroundColor(0x11000000);
+        previewOutput.setGravity(Gravity.START);
         root.addView(previewOutput);
 
         bindDefaults();
         loadIntoUi();
         refreshPreview();
 
-        saveButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                saveFromUi();
-                refreshPreview();
-            }
+        saveButton.setOnClickListener(v -> {
+            saveFromUi();
+            refreshPreview();
+            toast("Saved");
         });
 
-        resetButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                resetDefaults();
-                refreshPreview();
-            }
+        resetButton.setOnClickListener(v -> {
+            resetDefaults();
+            loadIntoUi();
+            refreshPreview();
+            toast("Reset");
         });
 
-        TextWatcher previewWatcher = new TextWatcher() {
+        TextWatcher watcher = new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {
             }
@@ -156,28 +166,53 @@ public final class MainActivity extends Activity {
             public void afterTextChanged(Editable s) {
             }
         };
-        previewInput.addTextChangedListener(previewWatcher);
+
+        delayEdit.addTextChangedListener(watcher);
+        minLengthEdit.addTextChangedListener(watcher);
+        allowedPackagesEdit.addTextChangedListener(watcher);
+        previewInput.addTextChangedListener(watcher);
 
         setContentView(scrollView);
     }
 
     private void bindDefaults() {
-        if (prefs == null) {
-            return;
-        }
         SharedPreferences.Editor editor = prefs.edit();
-        if (!prefs.contains(Prefs.KEY_ENABLED)) editor.putBoolean(Prefs.KEY_ENABLED, Prefs.DEF_ENABLED);
-        if (!prefs.contains(Prefs.KEY_DELAY_MS)) editor.putInt(Prefs.KEY_DELAY_MS, Prefs.DEF_DELAY_MS);
-        if (!prefs.contains(Prefs.KEY_ALLOWED_PACKAGES)) editor.putString(Prefs.KEY_ALLOWED_PACKAGES, Prefs.DEF_ALLOWED_PACKAGES);
-        if (!prefs.contains(Prefs.KEY_MIN_LENGTH)) editor.putInt(Prefs.KEY_MIN_LENGTH, Prefs.DEF_MIN_LENGTH);
-        if (!prefs.contains(Prefs.KEY_STUTTER_PCT)) editor.putInt(Prefs.KEY_STUTTER_PCT, Prefs.DEF_STUTTER_PCT);
-        if (!prefs.contains(Prefs.KEY_FACE_PCT)) editor.putInt(Prefs.KEY_FACE_PCT, Prefs.DEF_FACE_PCT);
-        if (!prefs.contains(Prefs.KEY_ACTION_PCT)) editor.putInt(Prefs.KEY_ACTION_PCT, Prefs.DEF_ACTION_PCT);
-        if (!prefs.contains(Prefs.KEY_EXCLAIM_PCT)) editor.putInt(Prefs.KEY_EXCLAIM_PCT, Prefs.DEF_EXCLAIM_PCT);
-        if (!prefs.contains(Prefs.KEY_PRESERVE_URLS)) editor.putBoolean(Prefs.KEY_PRESERVE_URLS, Prefs.DEF_PRESERVE_URLS);
-        if (!prefs.contains(Prefs.KEY_PRESERVE_EMAILS)) editor.putBoolean(Prefs.KEY_PRESERVE_EMAILS, Prefs.DEF_PRESERVE_EMAILS);
-        if (!prefs.contains(Prefs.KEY_PRESERVE_PASSWORDS)) editor.putBoolean(Prefs.KEY_PRESERVE_PASSWORDS, Prefs.DEF_PRESERVE_PASSWORDS);
-        if (!prefs.contains(Prefs.KEY_PRESERVE_ACRONYMS)) editor.putBoolean(Prefs.KEY_PRESERVE_ACRONYMS, Prefs.DEF_PRESERVE_ACRONYMS);
+        if (!prefs.contains(Prefs.KEY_ENABLED)) {
+            editor.putBoolean(Prefs.KEY_ENABLED, Prefs.DEF_ENABLED);
+        }
+        if (!prefs.contains(Prefs.KEY_DELAY_MS)) {
+            editor.putInt(Prefs.KEY_DELAY_MS, Prefs.DEF_DELAY_MS);
+        }
+        if (!prefs.contains(Prefs.KEY_MIN_LENGTH)) {
+            editor.putInt(Prefs.KEY_MIN_LENGTH, Prefs.DEF_MIN_LENGTH);
+        }
+        if (!prefs.contains(Prefs.KEY_ALLOWED_PACKAGES)) {
+            editor.putString(Prefs.KEY_ALLOWED_PACKAGES, Prefs.DEF_ALLOWED_PACKAGES);
+        }
+        if (!prefs.contains(Prefs.KEY_STUTTER_PCT)) {
+            editor.putInt(Prefs.KEY_STUTTER_PCT, Prefs.DEF_STUTTER_PCT);
+        }
+        if (!prefs.contains(Prefs.KEY_FACE_PCT)) {
+            editor.putInt(Prefs.KEY_FACE_PCT, Prefs.DEF_FACE_PCT);
+        }
+        if (!prefs.contains(Prefs.KEY_ACTION_PCT)) {
+            editor.putInt(Prefs.KEY_ACTION_PCT, Prefs.DEF_ACTION_PCT);
+        }
+        if (!prefs.contains(Prefs.KEY_EXCLAIM_PCT)) {
+            editor.putInt(Prefs.KEY_EXCLAIM_PCT, Prefs.DEF_EXCLAIM_PCT);
+        }
+        if (!prefs.contains(Prefs.KEY_PRESERVE_URLS)) {
+            editor.putBoolean(Prefs.KEY_PRESERVE_URLS, Prefs.DEF_PRESERVE_URLS);
+        }
+        if (!prefs.contains(Prefs.KEY_PRESERVE_EMAILS)) {
+            editor.putBoolean(Prefs.KEY_PRESERVE_EMAILS, Prefs.DEF_PRESERVE_EMAILS);
+        }
+        if (!prefs.contains(Prefs.KEY_PRESERVE_PASSWORDS)) {
+            editor.putBoolean(Prefs.KEY_PRESERVE_PASSWORDS, Prefs.DEF_PRESERVE_PASSWORDS);
+        }
+        if (!prefs.contains(Prefs.KEY_PRESERVE_ACRONYMS)) {
+            editor.putBoolean(Prefs.KEY_PRESERVE_ACRONYMS, Prefs.DEF_PRESERVE_ACRONYMS);
+        }
         editor.apply();
     }
 
@@ -185,8 +220,8 @@ public final class MainActivity extends Activity {
         UwuConfig cfg = UwuConfig.from(prefs);
         enabledSwitch.setChecked(cfg.enabled);
         delayEdit.setText(String.valueOf(cfg.delayMs));
-        allowedPackagesEdit.setText(cfg.allowedPackages);
         minLengthEdit.setText(String.valueOf(cfg.minLength));
+        allowedPackagesEdit.setText(cfg.allowedPackages);
         stutterBar.setValue(cfg.stutterPct);
         faceBar.setValue(cfg.facePct);
         actionBar.setValue(cfg.actionPct);
@@ -202,8 +237,8 @@ public final class MainActivity extends Activity {
         SharedPreferences.Editor editor = prefs.edit();
         editor.putBoolean(Prefs.KEY_ENABLED, cfg.enabled);
         editor.putInt(Prefs.KEY_DELAY_MS, cfg.delayMs);
-        editor.putString(Prefs.KEY_ALLOWED_PACKAGES, cfg.allowedPackages);
         editor.putInt(Prefs.KEY_MIN_LENGTH, cfg.minLength);
+        editor.putString(Prefs.KEY_ALLOWED_PACKAGES, cfg.allowedPackages);
         editor.putInt(Prefs.KEY_STUTTER_PCT, cfg.stutterPct);
         editor.putInt(Prefs.KEY_FACE_PCT, cfg.facePct);
         editor.putInt(Prefs.KEY_ACTION_PCT, cfg.actionPct);
@@ -216,23 +251,16 @@ public final class MainActivity extends Activity {
     }
 
     private void resetDefaults() {
-        SharedPreferences.Editor editor = prefs.edit();
-        editor.clear();
-        editor.apply();
+        prefs.edit().clear().apply();
         bindDefaults();
-        loadIntoUi();
     }
 
     private UwuConfig readUiConfig() {
-        boolean enabled = enabledSwitch.isChecked();
-        int delay = parseInt(delayEdit.getText().toString(), Prefs.DEF_DELAY_MS);
-        int minLength = parseInt(minLengthEdit.getText().toString(), Prefs.DEF_MIN_LENGTH);
-        String allowedPackages = allowedPackagesEdit.getText().toString().trim();
         return new UwuConfig(
-                enabled,
-                delay,
-                allowedPackages,
-                minLength,
+                enabledSwitch.isChecked(),
+                parseInt(delayEdit.getText().toString(), Prefs.DEF_DELAY_MS),
+                parseInt(minLengthEdit.getText().toString(), Prefs.DEF_MIN_LENGTH),
+                allowedPackagesEdit.getText().toString().trim(),
                 stutterBar.getValue(),
                 faceBar.getValue(),
                 actionBar.getValue(),
@@ -247,16 +275,7 @@ public final class MainActivity extends Activity {
     private void refreshPreview() {
         UwuConfig cfg = readUiConfig();
         String input = previewInput.getText() == null ? "" : previewInput.getText().toString();
-        String output = UwuTransformer.uwuify(input, cfg);
-        previewOutput.setText(output);
-    }
-
-    private SharedPreferences openPrefs() {
-        try {
-            return getSharedPreferences(Prefs.NAME, Context.MODE_WORLD_READABLE);
-        } catch (Throwable ignored) {
-            return getSharedPreferences(Prefs.NAME, Context.MODE_PRIVATE);
-        }
+        previewOutput.setText(UwuTransformer.uwuify(input, cfg));
     }
 
     private EditText createTextField(String hint) {
@@ -268,10 +287,9 @@ public final class MainActivity extends Activity {
         return editText;
     }
 
-    private EditText createNumberField(String hint, int def) {
+    private EditText createNumberField(String hint) {
         EditText editText = createTextField(hint);
         editText.setInputType(InputType.TYPE_CLASS_NUMBER);
-        editText.setText(String.valueOf(def));
         return editText;
     }
 
@@ -298,15 +316,10 @@ public final class MainActivity extends Activity {
         return box;
     }
 
-    private View space(int height) {
-        View v = new View(this);
-        v.setLayoutParams(new LinearLayout.LayoutParams(height, 1));
-        return v;
-    }
-
-    private int dp(int value) {
-        float density = getResources().getDisplayMetrics().density;
-        return Math.round(value * density);
+    private View space(int width) {
+        View view = new View(this);
+        view.setLayoutParams(new LinearLayout.LayoutParams(width, 1));
+        return view;
     }
 
     private int parseInt(String value, int fallback) {
@@ -317,6 +330,14 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private void toast(String message) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
     private final class LabelSeekBar extends LinearLayout {
         private final TextView labelView;
         private final SeekBar seekBar;
@@ -324,7 +345,7 @@ public final class MainActivity extends Activity {
 
         LabelSeekBar(String label, int defaultValue) {
             super(MainActivity.this);
-            this.baseLabel = label;
+            baseLabel = label;
             setOrientation(VERTICAL);
             setPadding(0, dp(8), 0, dp(8));
 
@@ -339,17 +360,17 @@ public final class MainActivity extends Activity {
 
             seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
                 @Override
-                public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
                     labelView.setText(baseLabel + ": " + progress + "%");
                     refreshPreview();
                 }
 
                 @Override
-                public void onStartTrackingTouch(SeekBar seekBar) {
+                public void onStartTrackingTouch(SeekBar bar) {
                 }
 
                 @Override
-                public void onStopTrackingTouch(SeekBar seekBar) {
+                public void onStopTrackingTouch(SeekBar bar) {
                 }
             });
         }

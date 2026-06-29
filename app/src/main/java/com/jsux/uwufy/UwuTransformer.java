@@ -2,19 +2,23 @@ package com.jsux.uwufy;
 
 import android.text.TextUtils;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Random;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class UwuTransformer {
     private static final Pattern WORD_PATTERN = Pattern.compile("[A-Za-z]+(?:'[A-Za-z]+)?");
-    private static final Pattern TOKEN_PATTERN = Pattern.compile("([A-Za-z]+(?:'[A-Za-z]+)?|\\S+|\\s+)");
-    private static final Pattern URL_PATTERN = Pattern.compile("(?i)(?:https?://\\S+|www\\.\\S+)");
-    private static final Pattern EMAIL_PATTERN = Pattern.compile("(?i)[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}");
+    private static final Pattern TOKEN_PATTERN = Pattern.compile("[A-Za-z]+(?:'[A-Za-z]+)?|\d+|\s+|[^\w\s]+");
+    private static final Pattern URL_PATTERN = Pattern.compile("(?i)(?:https?://\S+|www\.\S+)");
+    private static final Pattern EMAIL_PATTERN = Pattern.compile("(?i)[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}");
     private static final Pattern ACRONYM_PATTERN = Pattern.compile("^[A-Z0-9]{2,}$");
+    private static final Pattern ALREADY_CUTE_PATTERN = Pattern.compile("(?i).*(uwu|owo|hewwo|wuv|fwiend|nya|pwease|thw|>w<|:3).*");
 
     private static final List<String> FACES = Arrays.asList(
             "(uwu)",
@@ -23,7 +27,8 @@ public final class UwuTransformer {
             "(^･ω･^)",
             "(｡•̀ᴗ-)✧",
             ":3",
-            ">w<"
+            ">w<",
+            "(づ｡◕‿‿◕｡)づ"
     );
 
     private static final List<String> ACTIONS = Arrays.asList(
@@ -32,18 +37,20 @@ public final class UwuTransformer {
             "*nuzzles*",
             "*hides face*",
             "*wiggles happily*",
-            "*boops*"
+            "*boops*",
+            "*taps paws together*"
     );
 
     private static final List<String> EXCLAMATIONS = Arrays.asList(
             "!!",
             "!!!",
             "~",
+            "~!!",
             "!!?",
-            "~!!"
+            "owo!"
     );
 
-    private static final java.util.Map<String, String> DICT = new java.util.HashMap<>();
+    private static final Map<String, String> DICT = new HashMap<>();
 
     static {
         DICT.put("hello", "hewwo");
@@ -52,12 +59,12 @@ public final class UwuTransformer {
         DICT.put("love", "wuv");
         DICT.put("you", "yuw");
         DICT.put("your", "yuwr");
+        DICT.put("yours", "yuwrs");
         DICT.put("friend", "fwiend");
         DICT.put("friends", "fwiends");
         DICT.put("cute", "kewte");
         DICT.put("small", "smol");
         DICT.put("very", "bery");
-        DICT.put("the", "da");
         DICT.put("this", "dis");
         DICT.put("that", "dat");
         DICT.put("there", "dere");
@@ -67,6 +74,26 @@ public final class UwuTransformer {
         DICT.put("no", "nyo");
         DICT.put("yes", "yis");
         DICT.put("thanks", "thwanks");
+        DICT.put("thank", "thwank");
+        DICT.put("please", "pwease");
+        DICT.put("stop", "stowp");
+        DICT.put("for", "fow");
+        DICT.put("are", "awe");
+        DICT.put("the", "da");
+        DICT.put("them", "dem");
+        DICT.put("themself", "demsewf");
+        DICT.put("my", "ma");
+        DICT.put("mine", "mewn");
+        DICT.put("because", "becuz");
+        DICT.put("what", "wut");
+        DICT.put("why", "wy");
+        DICT.put("okay", "okie");
+        DICT.put("okay?", "okie?");
+        DICT.put("maybe", "mayb");
+        DICT.put("little", "widdle");
+        DICT.put("really", "weawwy");
+        DICT.put("sure", "suwe");
+        DICT.put("just", "juss");
         DICT.put("please", "pwease");
     }
 
@@ -74,45 +101,41 @@ public final class UwuTransformer {
     }
 
     public static String uwuify(String input, UwuConfig cfg) {
-        if (TextUtils.isEmpty(input) || cfg == null || !cfg.enabled) {
+        if (TextUtils.isEmpty(input) || cfg == null || !cfg.enabled || input.length() < cfg.minLength) {
             return input;
         }
 
-        if (input.length() < cfg.minLength) {
-            return input;
-        }
-
-        java.util.List<String> placeholders = new java.util.ArrayList<>();
-        String protectedInput = protectTokens(input, cfg, placeholders);
-
+        ArrayList<String> placeholders = new ArrayList<>();
+        String protectedInput = protectSegments(input, cfg, placeholders);
         Random random = new Random(seed(input, cfg));
-        StringBuilder out = new StringBuilder(protectedInput.length() + 32);
+        StringBuilder wordsFirst = new StringBuilder(protectedInput.length() + 64);
+
         Matcher matcher = TOKEN_PATTERN.matcher(protectedInput);
         int wordIndex = 0;
-
         while (matcher.find()) {
-            String token = matcher.group(1);
+            String token = matcher.group();
             if (token == null) {
                 continue;
             }
 
-            if (token.startsWith("__UWU_SAFE_") && token.endsWith("__")) {
-                out.append(restoreToken(token, placeholders));
+            if (isPlaceholder(token)) {
+                wordsFirst.append(restorePlaceholder(token, placeholders));
                 continue;
             }
 
             if (isWord(token)) {
-                out.append(transformWord(token, cfg, random, wordIndex++));
-                continue;
+                wordsFirst.append(transformWord(token, cfg, random, wordIndex++));
+            } else {
+                wordsFirst.append(token);
             }
-
-            out.append(token);
         }
 
-        return addEmbellishments(out.toString(), random, cfg);
+        String result = decorateSentences(wordsFirst.toString(), cfg, random);
+        result = normalizePunctuation(result);
+        return result;
     }
 
-    private static String protectTokens(String input, UwuConfig cfg, java.util.List<String> placeholders) {
+    private static String protectSegments(String input, UwuConfig cfg, List<String> placeholders) {
         String out = input;
         if (cfg.preserveUrls) {
             out = protectWithPattern(out, URL_PATTERN, placeholders);
@@ -123,7 +146,7 @@ public final class UwuTransformer {
         return out;
     }
 
-    private static String protectWithPattern(String input, Pattern pattern, java.util.List<String> placeholders) {
+    private static String protectWithPattern(String input, Pattern pattern, List<String> placeholders) {
         Matcher matcher = pattern.matcher(input);
         StringBuffer buffer = new StringBuffer();
         while (matcher.find()) {
@@ -135,7 +158,11 @@ public final class UwuTransformer {
         return buffer.toString();
     }
 
-    private static String restoreToken(String token, java.util.List<String> placeholders) {
+    private static boolean isPlaceholder(String token) {
+        return token.startsWith("__UWU_SAFE_") && token.endsWith("__");
+    }
+
+    private static String restorePlaceholder(String token, List<String> placeholders) {
         String middle = token.substring("__UWU_SAFE_".length(), token.length() - 2);
         try {
             int index = Integer.parseInt(middle);
@@ -154,93 +181,168 @@ public final class UwuTransformer {
             return word;
         }
 
-        String transformed = DICT.get(lower);
-        if (transformed == null) {
-            transformed = lower;
-            transformed = transformed.replace("th", "d");
-            transformed = transformed.replace("ove", "uv");
-            transformed = transformed.replace("r", "w");
-            transformed = transformed.replace("l", "w");
-            transformed = transformed.replace("na", "nya");
-            transformed = transformed.replace("ne", "nye");
-            transformed = transformed.replace("ni", "nyi");
-            transformed = transformed.replace("no", "nyo");
-            transformed = transformed.replace("nu", "nyu");
-            transformed = fixEnding(transformed);
+        if (ALREADY_CUTE_PATTERN.matcher(word).matches()) {
+            return word;
         }
 
-        if (random.nextInt(100) < cfg.stutterPct && transformed.length() > 4) {
+        String transformed = DICT.get(lower);
+        if (transformed == null) {
+            transformed = applyCoreRules(lower);
+        }
+
+        if (shouldStutter(transformed, random, cfg, wordIndex)) {
             transformed = stutter(transformed, random);
         }
 
+        transformed = maybeAddSuffix(transformed, random);
         return matchCase(word, transformed);
     }
 
-    private static String fixEnding(String word) {
-        if (word.endsWith("er") && word.length() > 3) {
-            return word.substring(0, word.length() - 2) + "ew";
+    private static String applyCoreRules(String lower) {
+        String out = lower;
+        out = out.replace("th", "d");
+        out = out.replace("ove", "uv");
+        out = out.replace("ar", "aw");
+        out = out.replace("er", "ew");
+        out = out.replace("or", "ow");
+        out = out.replace("l", "w");
+        out = out.replace("r", "w");
+        out = out.replace("na", "nya");
+        out = out.replace("ne", "nye");
+        out = out.replace("ni", "nyi");
+        out = out.replace("no", "nyo");
+        out = out.replace("nu", "nyu");
+        return fixEndings(out);
+    }
+
+    private static String fixEndings(String word) {
+        String out = word;
+        if (out.endsWith("ing") && out.length() > 4) {
+            out = out.substring(0, out.length() - 3) + "in'";
         }
-        if (word.endsWith("ar") && word.length() > 3) {
-            return word.substring(0, word.length() - 2) + "aw";
+        if (out.endsWith("er") && out.length() > 3) {
+            out = out.substring(0, out.length() - 2) + "ew";
         }
-        return word;
+        if (out.endsWith("ar") && out.length() > 3) {
+            out = out.substring(0, out.length() - 2) + "aw";
+        }
+        if (out.endsWith("ow") && out.length() > 3) {
+            out = out + "~";
+        }
+        return out;
+    }
+
+    private static boolean shouldStutter(String transformed, Random random, UwuConfig cfg, int wordIndex) {
+        if (cfg.stutterPct <= 0) {
+            return false;
+        }
+        if (transformed == null || transformed.length() < 4) {
+            return false;
+        }
+        if (wordIndex == 0) {
+            return random.nextInt(100) < Math.min(cfg.stutterPct / 2 + 1, cfg.stutterPct);
+        }
+        return random.nextInt(100) < cfg.stutterPct;
     }
 
     private static String stutter(String word, Random random) {
-        if (word.isEmpty()) {
+        if (TextUtils.isEmpty(word)) {
             return word;
         }
         char first = word.charAt(0);
         if (!Character.isLetter(first)) {
             return word;
         }
+
         if ("aeiou".indexOf(Character.toLowerCase(first)) >= 0) {
             return word;
         }
 
         int repeat = 1 + random.nextInt(2);
-        StringBuilder sb = new StringBuilder(word.length() + 4);
+        StringBuilder out = new StringBuilder(word.length() + 4);
         for (int i = 0; i < repeat; i++) {
-            sb.append(first).append('-');
+            out.append(first).append('-');
         }
-        sb.append(word);
-        return sb.toString();
+        out.append(word);
+        return out.toString();
     }
 
-    private static String addEmbellishments(String input, Random random, UwuConfig cfg) {
+    private static String maybeAddSuffix(String word, Random random) {
+        if (TextUtils.isEmpty(word)) {
+            return word;
+        }
+        if (word.length() <= 3) {
+            return word;
+        }
+        if (random.nextInt(100) < 7) {
+            return word + randomSuffix(word, random);
+        }
+        return word;
+    }
+
+    private static String randomSuffix(String word, Random random) {
+        switch (random.nextInt(6)) {
+            case 0:
+                return "~";
+            case 1:
+                return " >w<";
+            case 2:
+                return " owo";
+            case 3:
+                return " uwu";
+            case 4:
+                return " :3";
+            default:
+                return "!!";
+        }
+    }
+
+    private static String decorateSentences(String input, UwuConfig cfg, Random random) {
         if (TextUtils.isEmpty(input)) {
             return input;
         }
 
-        StringBuilder out = new StringBuilder(input.length() + 32);
-        Matcher matcher = Pattern.compile("([^.!?]*[.!?]?)(\\s*)").matcher(input);
+        Matcher matcher = Pattern.compile("([^.!?]*[.!?]?)(\s*)").matcher(input);
+        StringBuilder out = new StringBuilder(input.length() + 64);
         while (matcher.find()) {
-            String segment = matcher.group(1);
+            String sentence = matcher.group(1);
             String gap = matcher.group(2);
-            if (segment == null) {
-                continue;
-            }
 
-            out.append(segment);
-            if (!TextUtils.isEmpty(segment.trim())) {
-                if (random.nextInt(100) < cfg.facePct) {
-                    out.append(' ').append(pick(FACES, random));
-                }
-                if (random.nextInt(100) < cfg.actionPct) {
-                    out.append(' ').append(pick(ACTIONS, random));
-                }
-                if (random.nextInt(100) < cfg.exclaimPct) {
-                    out.append(' ').append(pick(EXCLAMATIONS, random));
-                }
-            }
-            out.append(gap);
-        }
+            if (!TextUtils.isEmpty(sentence)) {
+                out.append(sentence);
 
-        String result = out.toString().trim();
-        if (result.isEmpty()) {
-            result = input;
+                if (containsSentenceEnd(sentence)) {
+                    if (random.nextInt(100) < cfg.facePct) {
+                        out.append(' ').append(pick(FACES, random));
+                    }
+                    if (random.nextInt(100) < cfg.actionPct) {
+                        out.append(' ').append(pick(ACTIONS, random));
+                    }
+                    if (random.nextInt(100) < cfg.exclaimPct) {
+                        out.append(' ').append(pick(EXCLAMATIONS, random));
+                    }
+                }
+
+                out.append(gap);
+            }
         }
-        return result;
+        return out.toString().trim();
+    }
+
+    private static boolean containsSentenceEnd(String sentence) {
+        return sentence.endsWith(".") || sentence.endsWith("!") || sentence.endsWith("?");
+    }
+
+    private static String normalizePunctuation(String input) {
+        if (TextUtils.isEmpty(input)) {
+            return input;
+        }
+        return input
+                .replace("?!?", "?!")
+                .replace("!!?", "!!")
+                .replace("..", ".")
+                .replace("!!!", "!!")
+                .replace("??", "?");
     }
 
     private static boolean isWord(String token) {
@@ -254,30 +356,33 @@ public final class UwuTransformer {
     private static long seed(String input, UwuConfig cfg) {
         long s = input.hashCode();
         s = s * 31L + cfg.delayMs;
+        s = s * 31L + cfg.minLength;
         s = s * 31L + cfg.stutterPct;
         s = s * 31L + cfg.facePct;
         s = s * 31L + cfg.actionPct;
         s = s * 31L + cfg.exclaimPct;
+        s = s * 31L + (cfg.preserveUrls ? 1 : 0);
+        s = s * 31L + (cfg.preserveEmails ? 1 : 0);
+        s = s * 31L + (cfg.preservePasswords ? 1 : 0);
+        s = s * 31L + (cfg.preserveAcronyms ? 1 : 0);
         return s;
     }
 
     private static String matchCase(String original, String transformed) {
+        if (TextUtils.isEmpty(original) || TextUtils.isEmpty(transformed)) {
+            return transformed;
+        }
         if (original.equals(original.toUpperCase(Locale.ROOT))) {
             return transformed.toUpperCase(Locale.ROOT);
         }
-
         if (isTitleCase(original)) {
-            if (transformed.isEmpty()) {
-                return transformed;
-            }
             return Character.toUpperCase(transformed.charAt(0)) + transformed.substring(1);
         }
-
         return transformed;
     }
 
     private static boolean isTitleCase(String word) {
-        if (word.isEmpty()) {
+        if (TextUtils.isEmpty(word)) {
             return false;
         }
         if (!Character.isUpperCase(word.charAt(0))) {

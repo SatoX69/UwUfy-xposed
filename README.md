@@ -1,89 +1,46 @@
 # UwuFy LSPosed module
 
-UwuFy is an LSPosed/Xposed module that waits until text stops changing for a configurable delay, then rewrites it into uwu-style text.
+This is an LSPosed module with a small launcher app for configuring delayed uwu-fication of editable text.
 
-It hooks editable text fields in the target app process, so it works with Gboard, SwiftKey, Samsung Keyboard, and the rest of the keyboard circus. You do not need to scope the keyboard app itself. Scope the apps you type in.
+## What it does
 
-## Features
+- waits until text has been idle for a configurable amount of time
+- rewrites the text with uwu-style substitutions
+- randomly adds stutters, emoticons, actions, and exclamations
+- preserves URLs, emails, passwords, and acronyms if enabled
+- avoids transforming the text again while it is already being applied
 
-- Idle-delay uwuification so it does not mutate every keystroke immediately
-- Configurable delay in milliseconds
-- Toggleable rules and randomization
-- Word rewrites like `hello -> hewwo`, `you -> yuw`, `friend -> fwiend`
-- Stutters, emoticons, actions, and exclamations
-- Skip passwords and preserve URLs/emails/acronyms
-- Reset button in the app
-- GitHub Actions workflow that builds a release APK
+## Important scope note
 
-## LSPosed notes
+Scope the module to the apps you type in. Do not scope it only to the keyboard package, because the actual text lives in the app process.
 
-This project uses the legacy Xposed hook API because it is simple and compatible with LSPosed's classic module path. LSPosed documents that the modern API uses a different entry format and is still under active development, while the legacy API remains supported for compatibility. The module metadata includes `xposedsharedprefs` so the app's preferences can be read back from hooked processes.
+## Build on GitHub Actions
+
+The repository includes `.github/workflows/build.yml`. It uses the Gradle launcher in the repo root, Android SDK setup, and Gradle caching.
+
+## Build in Termux
+
+```bash
+pkg update -y
+pkg install -y openjdk-21 curl unzip
+chmod +x gradlew
+./gradlew assembleDebug
+```
+
+If you want a release APK, run:
+
+```bash
+./gradlew assembleRelease
+```
 
 ## Install
 
 1. Build the APK.
-2. Install it like a normal app.
+2. Install the APK.
 3. Enable the module in LSPosed.
-4. Scope it to the apps whose text fields you want uwu-fied.
-5. Open the app, tune the settings, and save.
+4. Reboot if LSPosed asks for it.
+5. Scope it to the apps you want uwu-fied.
 
-## GitHub Actions build
+## Notes
 
-The workflow in `.github/workflows/android.yml` downloads Gradle and the Android command line tools, installs the Android 34 platform and build tools, then runs:
-
-```bash
-gradle --no-daemon assembleRelease
-```
-
-The release build is signed with the debug keystore, so the APK is installable without extra signing setup.
-
-## Termux build
-
-### Packages
-
-```bash
-pkg update
-pkg install openjdk-21 git unzip wget curl
-```
-
-### Gradle and SDK
-
-Download Gradle 8.8 and the Android command line tools, then set:
-
-```bash
-export ANDROID_SDK_ROOT=$HOME/android-sdk
-export ANDROID_HOME=$ANDROID_SDK_ROOT
-export PATH="$HOME/gradle-8.8/bin:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
-```
-
-Install the required SDK packages:
-
-```bash
-yes | sdkmanager --licenses
-sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
-```
-
-Then build:
-
-```bash
-gradle --no-daemon assembleRelease
-```
-
-## What it changes
-
-The transformer applies these rules:
-
-- `r` and `l` drift into `w`
-- `th` softens to `d`
-- common words get dictionary replacements
-- some words get stutters
-- some sentences pick up emoticons, actions, and exclamations
-- URLs, emails, acronyms, and password fields are left alone
-
-## Output
-
-The APK is generated at:
-
-```text
-app/build/outputs/apk/release/app-release.apk
-```
+The default configuration keeps the delay conservative so it only transforms text after it has stopped changing.
